@@ -20,12 +20,19 @@ RUN stack setup
 RUN stack --no-terminal test --only-dependencies
 
 COPY . /opt/distributed-tests-prototype/
-RUN stack install --ghc-options="-fPIC"
+RUN stack install
 
 # RUN curl -sSL https://github.com/upx/upx/releases/download/v3.94/upx-3.94-amd64_linux.tar.xz \
 #   | tar -x --xz --strip-components 1 upx-3.94-amd64_linux/upx \
 #   && ./upx --best --ultra-brute /root/.local/bin/distributed-tests-prototype
 
-FROM debian:stretch-slim AS distro
+FROM debian:stretch-slim
+
+RUN apt-get update \
+ && apt-get install --no-install-recommends -y \
+    libgmp-dev=2:6.1.* \
+    netbase=5.4 \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /root/.local/bin/distributed-tests-prototype /bin/
 ENTRYPOINT ["/bin/distributed-tests-prototype"]

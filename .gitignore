@@ -1,2 +1,3 @@
 .stack-work/
 .ghci
+distributed-tests-prototype.cabal

@@ -37,9 +37,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - distributed-tests-prototype
-    ld-options:
-    - -static
-    - -pthread
 
 tests:
   distributed-tests-prototype-test:
