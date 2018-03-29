@@ -1,0 +1,7 @@
+resolver: lts-11.2
+packages:
+- .
+# extra-deps: []
+image:
+  container:
+    base: distributed-tests-prototype:base

@@ -1,0 +1,53 @@
+name:                distributed-tests-prototype
+version:             0.1.0.0
+github:              "advancedtelematic/distributed-tests-prototype"
+license:             BSD2
+author:              "Stevan Andjelkovic"
+maintainer:          "stevan.andjelkovic@here.com"
+copyright:           "Copyright (C) 2018, ATS Advanced Telematic Systems GmbH"
+
+extra-source-files:
+- README.md
+- CHANGELOG.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Testing
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on Github at <https://github.com/advancedtelematic/distributed-tests-prototype#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- distributed-process
+- distributed-process-simplelocalnet
+
+library:
+  source-dirs: src
+
+executables:
+  distributed-tests-prototype:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - distributed-tests-prototype
+    ld-options:
+    - -static
+    - -pthread
+
+tests:
+  distributed-tests-prototype-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - distributed-tests-prototype
