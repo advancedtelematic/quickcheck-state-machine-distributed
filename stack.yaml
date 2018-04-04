@@ -4,4 +4,4 @@ packages:
 # extra-deps: []
 image:
   container:
-    base: distributed-tests-prototype:base
+    base: advancedtelematic/distributed-tests-prototype:base
