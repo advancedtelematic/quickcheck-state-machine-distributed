@@ -15,12 +15,12 @@ RUN apt-get update \
 RUN curl -sSL https://get.haskellstack.org/ | sh
 
 WORKDIR /opt/distributed-tests-prototype/
+RUN stack --no-terminal --resolver=lts-11.2 --install-ghc exec -- ghc --version
 COPY stack.yaml package.yaml /opt/distributed-tests-prototype/
-RUN stack setup
-RUN stack --no-terminal test --only-dependencies
+RUN stack --no-terminal test --fast --only-dependencies
 
 COPY . /opt/distributed-tests-prototype/
-RUN stack install
+RUN stack --no-terminal install --fast
 
 # RUN curl -sSL https://github.com/upx/upx/releases/download/v3.94/upx-3.94-amd64_linux.tar.xz \
 #   | tar -x --xz --strip-components 1 upx-3.94-amd64_linux/upx \
