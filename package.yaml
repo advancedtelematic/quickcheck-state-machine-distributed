@@ -21,8 +21,13 @@ description:         Please see the README on Github at <https://github.com/adva
 
 dependencies:
 - base >= 4.7 && < 5
+- binary
+- bytestring
 - distributed-process
-- distributed-process-simplelocalnet
+- network
+- network-transport
+- network-transport-tcp
+- random
 
 library:
   source-dirs: src

@@ -2,6 +2,7 @@ resolver: lts-11.2
 packages:
 - .
 # extra-deps: []
-image:
-  container:
-    base: advancedtelematic/distributed-tests-prototype:base
+nix:
+  enable: false
+  pure: false
+  packages: [zlib]
