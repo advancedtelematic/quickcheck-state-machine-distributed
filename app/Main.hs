@@ -38,10 +38,10 @@ main = do
         NodeId (EndPointAddress (fromString (masterHost ++ ":" ++ masterPort ++ ":0")))
 
   case args of
-    ["master", host] -> do
+    "master" : host : args' -> do
       transport <- makeTransport host masterHost masterPort
       nid <- newLocalNode transport initRemoteTable
-      runProcess nid masterP
+      runProcess nid (masterP args')
       threadDelay (3 * 1000000)
       exitSuccess
     ["slave", host, port] -> do

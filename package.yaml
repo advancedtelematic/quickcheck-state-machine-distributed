@@ -24,9 +24,13 @@ dependencies:
 - binary
 - distributed-process
 - mtl
+- hspec
+- hspec-core
+- network
 - network-transport
 - network-transport-tcp
 - random
+- QuickCheck
 
 library:
   source-dirs: src
