@@ -61,12 +61,11 @@ data Task = Task Int -- XXX
 
 instance Binary Task
 
-data Message = CallForDuty ProcessId
-             | CallForDutyAck ProcessId
-             | AskForTask ProcessId
-             | DeliverTask Task
-             | WorkDone
-             | TaskFinished ProcessId Task
+data Message
+  = AskForTask ProcessId
+  | DeliverTask Task
+  | WorkDone
+  | TaskFinished ProcessId Task
   deriving (Typeable, Generic, Show)
 
 instance Binary Message
@@ -78,9 +77,7 @@ workerP nid = do
   self <- getSelfPid
   say $ printf "slave alive on %s" (show self)
   pid <- waitForMaster nid
-  send pid $ CallForDuty self
-  CallForDutyAck peer <- expect
-  go self peer
+  go self pid
   where
     go self peer = do
       send peer $ AskForTask self
@@ -131,9 +128,6 @@ masterP = do
     go self n q = do
       m <- expect
       case m of
-        CallForDuty peer -> do
-          send peer $ CallForDutyAck self
-          go self n q
         AskForTask peer -> do
           case dequeue q of
             (Just task, q') -> do
