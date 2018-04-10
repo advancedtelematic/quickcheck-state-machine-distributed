@@ -3,13 +3,10 @@ all:
 
 logs:
 	kubectl logs $(shell kubectl get pods --selector=app=master \
-		--field-selector=status.phase=Running \
 		--output=jsonpath='{.items[0].metadata.name}')
 	kubectl logs $(shell kubectl get pods --selector=job-name=slave \
-		--field-selector=status.phase=Running \
 		--output=jsonpath='{.items[0].metadata.name}')
 	kubectl logs $(shell kubectl get pods --selector=job-name=slave \
-		--field-selector=status.phase=Running \
 		--output=jsonpath='{.items[1].metadata.name}')
 
 clean:
