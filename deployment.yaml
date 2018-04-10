@@ -57,3 +57,7 @@ spec:
         ports:
         - containerPort: 8080
         imagePullPolicy: Always
+      initContainers:
+        - name: init-slave
+          image: busybox
+          command: ['sh', '-c', 'until nc -z master 8080; do sleep 1; done;']
