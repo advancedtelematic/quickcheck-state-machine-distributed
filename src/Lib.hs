@@ -14,10 +14,12 @@ module Lib
 import           Control.Concurrent
                    (threadDelay)
 import           Control.Distributed.Process
-                   (NodeId(..), Process, ProcessId, expect, getSelfPid,
-                   liftIO, nsendRemote, register, say, send, terminate,
-                   unregister)
+                   (NodeId(..), Process, ProcessId, WhereIsReply(..),
+                   expect, getSelfPid, liftIO, match, matchAny,
+                   receiveTimeout, register, say, send, terminate,
+                   unregister, whereisRemoteAsync)
 import           Data.Binary
+import           Data.Maybe (fromMaybe)
 import           Data.Foldable
                    (foldl')
 import           Data.Typeable
@@ -59,12 +61,11 @@ data Task = Task Int -- XXX
 
 instance Binary Task
 
-data Message = CallForDuty ProcessId
-             | CallForDutyAck ProcessId
-             | AskForTask ProcessId
-             | DeliverTask Task
-             | WorkDone
-             | TaskFinished ProcessId Task
+data Message
+  = AskForTask ProcessId
+  | DeliverTask Task
+  | WorkDone
+  | TaskFinished ProcessId Task
   deriving (Typeable, Generic, Show)
 
 instance Binary Message
@@ -73,12 +74,10 @@ instance Binary Message
 
 workerP :: NodeId -> Process ()
 workerP nid = do
-  say $ printf "master: %s" (show nid)
   self <- getSelfPid
-  say $ printf "self: %s" (show self)
-  nsendRemote nid "taskQueue" $ CallForDuty self
-  CallForDutyAck peer <- expect
-  go self peer
+  say $ printf "slave alive on %s" (show self)
+  pid <- waitForMaster nid
+  go self pid
   where
     go self peer = do
       send peer $ AskForTask self
@@ -97,12 +96,29 @@ workerP nid = do
           say $ printf "did not understand %s" (show msg)
           go self peer
 
+    waitForMaster masterNid = do
+      say $ printf "waiting for master on %s" (show masterNid)
+      whereisRemoteAsync masterNid "taskQueue"
+      mpid <- receiveTimeout 100000
+        [ match (\(WhereIsReply _ (Just pid)) -> do
+                    say $ printf "found master on %s" (show pid)
+                    return pid)
+        , match (\(WhereIsReply _ Nothing)    -> do
+                    say $ printf "didn't find master."
+                    liftIO (threadDelay 1000000)
+                    waitForMaster masterNid)
+        , matchAny (\msg                      -> do
+                       say $ printf "unknown message: %s" (show msg)
+                       waitForMaster masterNid)
+        ]
+      maybe (waitForMaster masterNid) return mpid
+
 ------------------------------------------------------------------------
 
 masterP :: Process ()
 masterP = do
   self <- getSelfPid
-  say "master"
+  say $ printf "master alive on %s" (show self)
   register "taskQueue" self
   let n = 15
       q = foldl' (\akk -> (enqueue akk) . Task) mempty [1..n]
@@ -112,9 +128,6 @@ masterP = do
     go self n q = do
       m <- expect
       case m of
-        CallForDuty peer -> do
-          send peer $ CallForDutyAck self
-          go self n q
         AskForTask peer -> do
           case dequeue q of
             (Just task, q') -> do
@@ -136,4 +149,3 @@ masterP = do
 
     shutdown = do
       unregister "taskQueue"
-      terminate
