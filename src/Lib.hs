@@ -11,23 +11,37 @@ module Lib
   )
   where
 
+import           Control.Arrow
+                   (first, second)
 import           Control.Concurrent
                    (threadDelay)
 import           Control.Distributed.Process
                    (NodeId(..), Process, ProcessId, WhereIsReply(..),
                    expect, getSelfPid, liftIO, match, matchAny,
-                   receiveTimeout, register, say, send, terminate,
-                   unregister, whereisRemoteAsync)
+                   receiveTimeout, receiveWait, register, say, send,
+                   terminate, unregister, whereisRemoteAsync)
+import           Control.Monad
+                   (when)
+import           Control.Monad.Reader
+                   (ask)
+import           Control.Monad.State
+                   (gets, modify)
 import           Data.Binary
-import           Data.Maybe (fromMaybe)
+                   (Binary)
 import           Data.Foldable
                    (foldl')
+import           Data.Maybe
+                   (fromMaybe)
 import           Data.Typeable
+                   (Typeable)
 import           GHC.Generics
                    (Generic)
 import           System.Random
                    (getStdRandom, randomR)
 import           Text.Printf
+                   (printf)
+
+import           StateMachine
 
 ------------------------------------------------------------------------
 
@@ -76,42 +90,38 @@ workerP :: NodeId -> Process ()
 workerP nid = do
   self <- getSelfPid
   say $ printf "slave alive on %s" (show self)
-  pid <- waitForMaster nid
-  go self pid
-  where
-    go self peer = do
-      send peer $ AskForTask self
-      m <- expect
-      case m of
-        DeliverTask task@(Task n) -> do
-          -- do some work
-          liftIO $ do
-            t <- getStdRandom $ randomR (0, n * 1000000) -- n secs
-            threadDelay t
-          say $ printf "done: %s" (show task)
-          send peer $ TaskFinished self task
-          go self peer
-        WorkDone -> return ()
-        msg -> do
-          say $ printf "did not understand %s" (show msg)
-          go self peer
+  master <- waitForMaster nid
+  send master (AskForTask self)
+  stateMachineProcess (self, master) () slaveSM
 
-    waitForMaster masterNid = do
-      say $ printf "waiting for master on %s" (show masterNid)
-      whereisRemoteAsync masterNid "taskQueue"
-      mpid <- receiveTimeout 100000
-        [ match (\(WhereIsReply _ (Just pid)) -> do
-                    say $ printf "found master on %s" (show pid)
-                    return pid)
-        , match (\(WhereIsReply _ Nothing)    -> do
-                    say $ printf "didn't find master."
-                    liftIO (threadDelay 1000000)
-                    waitForMaster masterNid)
-        , matchAny (\msg                      -> do
-                       say $ printf "unknown message: %s" (show msg)
-                       waitForMaster masterNid)
-        ]
-      maybe (waitForMaster masterNid) return mpid
+waitForMaster :: NodeId -> Process ProcessId
+waitForMaster masterNid = do
+  say $ printf "waiting for master on %s" (show masterNid)
+  whereisRemoteAsync masterNid "taskQueue"
+  mpid <- receiveTimeout 1000
+    [ match (\(WhereIsReply _ (Just pid)) -> do
+                say $ printf "found master on %s" (show pid)
+                return pid)
+    , match (\(WhereIsReply _ Nothing)    -> do
+                say $ printf "didn't find master."
+                liftIO (threadDelay 1000000)
+                waitForMaster masterNid)
+    , matchAny (\msg                      -> do
+                   say $ printf "unknown message: %s" (show msg)
+                   waitForMaster masterNid)
+    ]
+  maybe (waitForMaster masterNid) return mpid
+
+slaveSM :: Message -> StateMachine (ProcessId, ProcessId) () Message ()
+slaveSM (DeliverTask task@(Task n)) = do
+  -- do some work
+  t <- liftIO (getStdRandom (randomR (0, n * 1000000))) -- n secs
+  liftIO (threadDelay t)
+  tell (printf "done: %s" (show task))
+  (self, master) <- ask
+  master ! TaskFinished self task
+  master ! AskForTask self
+slaveSM WorkDone = halt
 
 ------------------------------------------------------------------------
 
@@ -122,30 +132,22 @@ masterP = do
   register "taskQueue" self
   let n = 15
       q = foldl' (\akk -> (enqueue akk) . Task) mempty [1..n]
-  go self n q
-  where
-    go :: ProcessId -> Int -> Queue Task -> Process ()
-    go self n q = do
-      m <- expect
-      case m of
-        AskForTask peer -> do
-          case dequeue q of
-            (Just task, q') -> do
-              send peer (DeliverTask task)
-              go self n q'
-            (Nothing, q') -> do
-              send peer WorkDone
-              if n == 0
-              then shutdown
-              else go self n q'
-        TaskFinished peer task -> do
-          say $ printf "work %s done by %s" (show task) (show peer)
-          if n == 0
-          then shutdown
-          else go self (pred n) q
-        msg -> do
-          say $ printf "did not understand %s" (show msg)
-          go self n q
+  stateMachineProcess () (n, q) masterSM
 
-    shutdown = do
-      unregister "taskQueue"
+masterSM :: Message -> StateMachine () (Int, Queue Task) Message ()
+masterSM (AskForTask pid) = do
+  q <- gets snd
+  case dequeue q of
+    (Just task, q') -> do
+      modify (second (const q'))
+      pid ! DeliverTask task
+    (Nothing, _)    -> do
+      pid ! WorkDone
+      n <- gets fst
+      when (n == 0) halt
+masterSM (TaskFinished pid task) = do
+  tell (printf "work %s done by %s" (show task) (show pid))
+  n <- gets fst
+  if n == 0
+  then halt
+  else modify (first pred)
