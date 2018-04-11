@@ -31,7 +31,7 @@ main = do
   prog <- getProgName
   args <- getArgs
 
-  masterHost <- fromMaybe "localhost" <$> lookupEnv "MASTER_SERVICE_HOST"
+  masterHost <- fromMaybe "127.0.0.1" <$> lookupEnv "MASTER_SERVICE_HOST"
   masterPort <- fromMaybe "8080"      <$> lookupEnv "MASTER_SERVICE_PORT"
 
   let masterNodeId =
