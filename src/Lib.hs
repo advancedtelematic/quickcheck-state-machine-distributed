@@ -11,15 +11,12 @@ module Lib
   )
   where
 
-import           Control.Arrow
-                   (first, second)
 import           Control.Concurrent
                    (threadDelay)
 import           Control.Distributed.Process
                    (NodeId(..), Process, ProcessId, WhereIsReply(..),
-                   expect, getSelfPid, liftIO, match, matchAny,
-                   receiveTimeout, receiveWait, register, say, send,
-                   terminate, unregister, whereisRemoteAsync)
+                   getSelfPid, liftIO, match, matchAny, receiveTimeout,
+                   register, say, send, whereisRemoteAsync)
 import           Control.Monad
                    (when)
 import           Control.Monad.Reader
@@ -30,18 +27,20 @@ import           Data.Binary
                    (Binary)
 import           Data.Foldable
                    (foldl')
-import           Data.Maybe
-                   (fromMaybe)
+import           Data.Monoid
+                   ((<>))
 import           Data.Typeable
                    (Typeable)
 import           GHC.Generics
                    (Generic)
-import           System.Random
-                   (getStdRandom, randomR)
+import           Test.Hspec.Core.Runner
+                   (Summary(..))
 import           Text.Printf
                    (printf)
 
 import           StateMachine
+
+import           Test
 
 ------------------------------------------------------------------------
 
@@ -70,7 +69,7 @@ dequeue _ = error "unexpected invariant: front of queue is empty but rear is not
 
 ------------------------------------------------------------------------
 
-data Task = Task Int -- XXX
+data Task = Task String
   deriving (Typeable, Generic, Show, Ord, Eq)
 
 instance Binary Task
@@ -79,8 +78,16 @@ data Message
   = AskForTask ProcessId
   | DeliverTask Task
   | WorkDone
-  | TaskFinished ProcessId Task
+  | TaskFinished ProcessId Task TaskResult
   deriving (Typeable, Generic, Show)
+
+data TaskResult = TaskResult Int Int
+  deriving (Generic, Show)
+
+instance Binary TaskResult
+
+summaryFromTaskResult :: TaskResult -> Summary
+summaryFromTaskResult (TaskResult exs fails) = Summary exs fails
 
 instance Binary Message
 
@@ -92,7 +99,7 @@ workerP nid = do
   say $ printf "slave alive on %s" (show self)
   master <- waitForMaster nid
   send master (AskForTask self)
-  stateMachineProcess (self, master) () slaveSM
+  stateMachineProcess (self, master) () workerSM
 
 waitForMaster :: NodeId -> Process ProcessId
 waitForMaster masterNid = do
@@ -112,42 +119,56 @@ waitForMaster masterNid = do
     ]
   maybe (waitForMaster masterNid) return mpid
 
-slaveSM :: Message -> StateMachine (ProcessId, ProcessId) () Message ()
-slaveSM (DeliverTask task@(Task n)) = do
-  -- do some work
-  t <- liftIO (getStdRandom (randomR (0, n * 1000000))) -- n secs
-  liftIO (threadDelay t)
-  tell (printf "done: %s" (show task))
+workerSM :: Message -> StateMachine (ProcessId, ProcessId) () Message ()
+workerSM (DeliverTask task@(Task descr)) = do
+  tell $ printf "running: %s" (show task)
+  Summary exs fails <- liftIO $ runTests descr
+  tell $ printf "done: %s" (show task)
   (self, master) <- ask
-  master ! TaskFinished self task
+  master ! TaskFinished self task (TaskResult exs fails)
   master ! AskForTask self
-slaveSM WorkDone = halt
+workerSM WorkDone = halt
+workerSM _ = error "invalid state transition"
 
 ------------------------------------------------------------------------
 
-masterP :: Process ()
-masterP = do
+masterP :: [String] -> Process ()
+masterP args = do
   self <- getSelfPid
-  say $ printf "master alive on %s" (show self)
+  say $ printf "master alive on %s: %s" (show self) (unwords args)
   register "taskQueue" self
-  let n = 15
-      q = foldl' (\akk -> (enqueue akk) . Task) mempty [1..n]
-  stateMachineProcess () (n, q) masterSM
+  let n = length args
+      q = foldl' (\akk -> (enqueue akk) . Task) mempty args
+  stateMachineProcess () (MasterState n  q  mempty) masterSM
 
-masterSM :: Message -> StateMachine () (Int, Queue Task) Message ()
+data MasterState = MasterState
+  { step    :: Int
+  , queue   :: Queue Task
+  , summary :: Summary
+  }
+
+masterSM :: Message -> StateMachine () MasterState Message ()
 masterSM (AskForTask pid) = do
-  q <- gets snd
+  q <- gets queue
   case dequeue q of
     (Just task, q') -> do
-      modify (second (const q'))
+      modify (\s -> s { queue = q' })
       pid ! DeliverTask task
     (Nothing, _)    -> do
       pid ! WorkDone
-      n <- gets fst
+      n <- gets step
       when (n == 0) halt
-masterSM (TaskFinished pid task) = do
-  tell (printf "work %s done by %s" (show task) (show pid))
-  n <- gets fst
+masterSM (TaskFinished pid task result) = do
+  tell $ printf "%s: %s done with %s" (show task) (show result) (show pid)
+  n <- gets step
+  summary' <- gets summary
+  let summary'' = summary' <> summaryFromTaskResult result
   if n == 0
-  then halt
-  else modify (first pred)
+  then do
+    tell $ printf "summary: " <> show summary''
+    halt
+  else do
+    modify (\s -> s { step = pred $ step s
+                    , summary = summary''
+                    })
+masterSM _ = error "invalid state transition"

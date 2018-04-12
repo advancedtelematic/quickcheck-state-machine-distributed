@@ -26,7 +26,7 @@ import           Control.Monad.Reader
 import           Control.Monad.State
                    (MonadState, StateT, execStateT)
 import           Control.Monad.Writer        as Writer
-                   (MonadWriter, WriterT, runWriter, runWriterT, tell)
+                   (MonadWriter, WriterT, runWriterT, tell)
 import           Data.Binary
                    (Binary)
 import           Data.Typeable
