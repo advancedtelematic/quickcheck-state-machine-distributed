@@ -22,15 +22,17 @@ description:         Please see the README on Github at <https://github.com/adva
 dependencies:
 - base >= 4.7 && < 5
 - binary
+- containers
 - distributed-process
-- mtl
 - hspec
 - hspec-core
+- mtl
 - network
 - network-transport
 - network-transport-tcp
 - random
 - QuickCheck
+- stm
 
 library:
   source-dirs: src

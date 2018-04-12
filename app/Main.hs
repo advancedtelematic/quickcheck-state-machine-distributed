@@ -7,7 +7,7 @@ module Main where
 import           Control.Concurrent
                    (threadDelay)
 import           Control.Distributed.Process
-                   (NodeId(..))
+                   (NodeId(NodeId))
 import           Control.Distributed.Process.Node
                    (initRemoteTable, newLocalNode, runProcess)
 import           Data.Binary
@@ -16,14 +16,12 @@ import           Data.Foldable
                    (foldl')
 import           Data.Maybe
                    (fromMaybe)
-import           Data.Proxy
-                   (Proxy(Proxy))
 import           Data.String
                    (fromString)
 import           GHC.Generics
                    (Generic)
 import           Network.Transport
-                   (EndPointAddress(..))
+                   (EndPointAddress(..), Transport)
 import           Network.Transport.TCP
                    (createTransport, defaultTCPParameters)
 import           System.Environment
@@ -32,7 +30,14 @@ import           System.Exit
                    (exitFailure, exitSuccess)
 import           Test.Hspec.Core.Runner
                    (Summary(..))
+import           System.Random
+                   (randomIO)
+import           Test.QuickCheck
+                   (quickCheck)
+import           Text.Read
+                   (readMaybe)
 
+import qualified Bank
 import           Lib
 import           TaskQueue
 import           Test
@@ -50,9 +55,14 @@ instance Monoid TestResult where
 
 instance Binary TestResult
 
+usage :: IO a
+usage = do
+  prog <- getProgName
+  putStrLn $ "usage: " ++ prog ++ " (master host | slave host port | bank (integer | random))"
+  exitFailure
+
 main :: IO ()
 main = do
-  prog <- getProgName
   args <- getArgs
 
   masterHost <- fromMaybe "127.0.0.1" <$> lookupEnv "MASTER_SERVICE_HOST"
@@ -86,14 +96,21 @@ main = do
           testAction (Task _ test) = do
             Summary exs fails <- runTests test
             return $ TaskResult mempty $ TestResult exs fails
-      runProcess nid $ workerP (Proxy :: Proxy (WorkerMessage TestResult)) masterNodeId testAction
-
+      runProcess nid $ workerP masterNodeId testAction
       threadDelay (3 * 1000000)
       exitSuccess
-    _ -> do
-      putStrLn $ "usage: " ++ prog ++ " (master host | slave host port)"
-      exitFailure
+    ["bank", mseed] -> do
+      seed <- case mseed of
+        "random" -> randomIO
+        mint     -> case readMaybe mint of
+          Nothing  -> usage
+          Just int -> return int
+      quickCheck (Bank.prop_bank seed)
+      threadDelay (3 * 1000000)
+      exitSuccess
+    _ -> usage
   where
+  makeTransport :: String -> String -> String -> IO Transport
   makeTransport host externalHost port = do
     etransport <- createTransport host port (\port' -> (externalHost, port')) defaultTCPParameters
     case etransport of
