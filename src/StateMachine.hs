@@ -10,6 +10,7 @@ module StateMachine
   , halt
   , StateMachine.tell
   , (!)
+  , MonadStateMachine
   )
   where
 
@@ -64,19 +65,21 @@ runStateMachine cfg st
 stateMachineProcess
   :: (Binary input,  Typeable input)
   => (Binary output, Typeable output)
-  => config -> state -> (input -> StateMachine config state output a) -> Process ()
-stateMachineProcess cfg st k = do
+  => proxy output -> config -> state
+  -> (input -> StateMachine config state output a)
+  -> Process ()
+stateMachineProcess proxy cfg st k = do
   (mst', outputs) <- receiveWait [ match (liftIO . runStateMachine cfg st . k) ]
   forM_ outputs $ \output -> case output of
     Left str         -> say str
     Right (pid, msg) -> send pid msg
   case mst' of
     Left HaltStateMachine -> return ()
-    Right st'             -> stateMachineProcess cfg st' k
+    Right st'             -> stateMachineProcess proxy cfg st' k
 
 ------------------------------------------------------------------------
 
-halt :: MonadStateMachine config output state m => m a
+halt :: MonadStateMachine config state output m => m a
 halt = throwError HaltStateMachine
 
 (!) :: MonadStateMachine config state output m => ProcessId -> output -> m ()
