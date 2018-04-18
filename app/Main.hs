@@ -16,6 +16,8 @@ import           Data.Foldable
                    (foldl')
 import           Data.Maybe
                    (fromMaybe)
+import           Data.Monoid
+                   ((<>))
 import           Data.String
                    (fromString)
 import           GHC.Generics
@@ -28,10 +30,10 @@ import           System.Environment
                    (getArgs, getProgName, lookupEnv)
 import           System.Exit
                    (exitFailure, exitSuccess)
-import           Test.Hspec.Core.Runner
-                   (Summary(..))
 import           System.Random
                    (randomIO)
+import           Test.Hspec.Core.Runner
+                   (Summary(..))
 import           Test.QuickCheck
                    (quickCheck)
 import           Text.Read
@@ -79,12 +81,20 @@ main = do
       let testTasks = zipWith Task (map TaskId [0..]) args'
           n = length testTasks
           q = foldl' enqueue mempty testTasks
-          initState = MasterState n q (mempty :: TaskResult TestResult)
-          resultAction :: TaskResult TestResult -> IO ()
-          resultAction (TaskResult tasks result') = do
-            putStrLn $ "tasks completed: " ++ show tasks
-            putStrLn $ "test summary: "    ++ show result'
-      runProcess nid (masterP initState resultAction)
+          initState = MasterState n q (mempty :: TaskSummary TestResult)
+
+          reduceAction :: TaskResult TestResult -> TaskSummary TestResult -> TaskSummary TestResult
+          reduceAction result summary' = TaskSummary (pure result) <> summary'
+
+          finalAction :: TaskSummary TestResult -> IO ()
+          finalAction (TaskSummary summary') = do
+            putStrLn $ "succeeded:"
+            putStrLn $ show [(taskId', result) | TaskSuccess taskId' result <- summary']
+
+            putStrLn $ "failed:"
+            putStrLn $ show [(taskId', result) | TaskFailure taskId' result <- summary']
+
+      runProcess nid (masterP initState reduceAction finalAction)
 
       threadDelay (3 * 1000000)
       exitSuccess
@@ -93,9 +103,12 @@ main = do
       nid       <- newLocalNode transport initRemoteTable
 
       let testAction :: Task TestTask -> IO (TaskResult TestResult)
-          testAction (Task _ test) = do
+          testAction (Task taskId' test) = do
             Summary exs fails <- runTests test
-            return $ TaskResult mempty $ TestResult exs fails
+            return $ (if fails == 0
+                      then TaskSuccess
+                      else TaskFailure)
+                     taskId' $ TestResult exs fails
       runProcess nid $ workerP masterNodeId testAction
       threadDelay (3 * 1000000)
       exitSuccess

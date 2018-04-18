@@ -31,4 +31,4 @@ tests = do
       property $ \xs -> (reverse . reverse) xs == (xs :: [Int])
 
 runTests :: String -> IO Summary
-runTests descr = withArgs ["--match=" ++ descr] $ hspecResult $ modifyMaxSuccess (const 1000000) tests
+runTests descr = withArgs ["--match=" ++ descr] $ hspecResult $ modifyMaxSuccess (const 100000) tests
