@@ -47,12 +47,20 @@ data Task a = Task TaskId a
 
 instance Binary a => Binary (Task a)
 
-data TaskResult a = TaskResult [TaskId] a
+data TaskResult a =
+    TaskSuccess TaskId a
+  | TaskFailure TaskId a
   deriving (Generic, Typeable)
 
-instance Monoid a => Monoid (TaskResult a) where
-  mempty = TaskResult mempty mempty
-  (TaskResult lhsIds lhs) `mappend` (TaskResult rhsIds rhs) =
-    TaskResult (lhsIds <> rhsIds) (lhs <> rhs)
+taskId :: TaskResult a -> TaskId
+taskId (TaskSuccess id' _) = id'
+taskId (TaskFailure id' _) = id'
+
+data TaskSummary a = TaskSummary [TaskResult a]
+  deriving (Generic, Typeable)
+
+instance Monoid (TaskSummary a) where
+  mempty = TaskSummary mempty
+  TaskSummary lhs `mappend` TaskSummary rhs = TaskSummary $ lhs <> rhs
 
 instance Binary a => Binary (TaskResult a)

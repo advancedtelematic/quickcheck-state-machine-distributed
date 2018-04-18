@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE ExplicitForAll      #-}
+{-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications    #-}
 
@@ -26,8 +27,6 @@ import           Control.Monad.State
                    (gets, modify)
 import           Data.Binary
                    (Binary)
-import           Data.Monoid
-                   ((<>))
 import           Data.Typeable
                    (Typeable)
 import           GHC.Generics
@@ -88,38 +87,41 @@ waitForMaster masterNid = do
 workerSM :: (Task a -> IO (TaskResult b))
          -> MasterMessage a
          -> StateMachine (ProcessId, ProcessId) () (WorkerMessage b) (WorkerMessage b) ()
-workerSM mapAction (DeliverTask task@(Task taskId _)) = do
-  tell $ printf "running: %s" (show taskId)
-  TaskResult _ result' <- liftIO $ mapAction task
-  tell $ printf "done: %s" (show taskId)
+workerSM mapAction (DeliverTask task@(Task taskId' _)) = do
+  tell $ printf "running: %s" (show taskId')
+  result' <- liftIO $ mapAction task
+  tell $ printf "done: %s" (show taskId')
   (self, master) <- ask
-  master ! TaskFinished self (TaskResult (pure taskId) result')
+  case result' of
+    TaskSuccess _ result'' -> master ! (TaskFinished self $ TaskSuccess taskId' result'')
+    TaskFailure _ result'' -> master ! (TaskFinished self $ TaskFailure taskId' result'')
   master ! AskForTask self
 workerSM _ WorkDone = halt
 
 ------------------------------------------------------------------------
 
 data MasterState a b = MasterState
-  { step   :: Int
-  , queue  :: Queue (Task a)
-  , result :: TaskResult b
+  { step    :: Int
+  , queue   :: Queue (Task a)
+  , summary :: TaskSummary b
   }
 
 masterP :: (Binary a, Typeable a, Binary b, Typeable b, Monoid b)
         => MasterState a b
-        -> (TaskResult b -> IO ())
+        -> (TaskResult  b -> TaskSummary b -> TaskSummary b)
+        -> (TaskSummary b -> IO ())
         -> Process ()
-masterP initState reduceAction = do
+masterP initState reduceAction finalAction = do
   self <- getSelfPid
   say $ printf "master alive on %s" (show self)
   register "taskQueue" self
-  stateMachineProcess_ () initState Nothing (masterSM reduceAction)
+  stateMachineProcess_ () initState Nothing (masterSM reduceAction finalAction)
 
-masterSM :: Monoid b
-         => (TaskResult b -> IO ())
+masterSM :: (TaskResult  b -> TaskSummary b -> TaskSummary b)
+         -> (TaskSummary b -> IO ())
          -> WorkerMessage b
          -> StateMachine () (MasterState a b) (MasterMessage a) (MasterMessage a) ()
-masterSM resultAction (AskForTask pid) = do
+masterSM _ finalAction (AskForTask pid) = do
   q <- gets queue
   case dequeue q of
     (Just task, q') -> do
@@ -129,18 +131,19 @@ masterSM resultAction (AskForTask pid) = do
       pid ! WorkDone
       n <- gets step
       when (n == 0) $ do
-        summary' <- gets result
-        liftIO $ resultAction summary'
+        summary' <- gets summary
+        liftIO $ finalAction summary'
         halt
-masterSM resultAction (TaskFinished pid result'@(TaskResult tasks _)) = do
-  tell $ printf "%s done with %s" (show pid) (show tasks)
+masterSM reduceAction finalAction (TaskFinished pid result') = do
+  tell $ printf "%s done with %s" (show pid) (show $ taskId result')
   n        <- gets step
-  summary' <- gets ((<> result') . result)
+  summary' <- gets summary
+  let summary'' = reduceAction result' summary'
   if n == 0
   then do
-    liftIO $ resultAction result'
+    liftIO $ finalAction summary''
     halt
   else do
-    modify (\s -> s { step   = pred $ step s
-                    , result = summary'
+    modify (\s -> s { step    = pred $ step s
+                    , summary = summary''
                     })
