@@ -28,8 +28,6 @@ import           Data.Binary
                    (Binary)
 import           Data.Monoid
                    ((<>))
-import           Data.Proxy
-                   (Proxy(Proxy))
 import           Data.Typeable
                    (Typeable)
 import           GHC.Generics
@@ -58,17 +56,16 @@ instance Binary a => Binary (MasterMessage a)
 
 ------------------------------------------------------------------------
 
-workerP :: forall proxy a b . (Binary a, Typeable a, Binary b, Typeable b)
-        => proxy (WorkerMessage b)
-        -> NodeId
+workerP :: forall a b. (Binary a, Typeable a, Binary b, Typeable b)
+        => NodeId
         -> (Task a -> IO (TaskResult b))
         -> Process ()
-workerP proxy nid workload = do
+workerP nid workload = do
   self <- getSelfPid
   say $ printf "slave alive on %s" (show self)
   master <- waitForMaster nid
   send master (AskForTask self :: WorkerMessage b)
-  stateMachineProcess proxy (self, master) () (workerSM @a @b workload)
+  stateMachineProcess_ (self, master) () Nothing (workerSM @a @b workload)
 
 waitForMaster :: NodeId -> Process ProcessId
 waitForMaster masterNid = do
@@ -90,7 +87,7 @@ waitForMaster masterNid = do
 
 workerSM :: (Task a -> IO (TaskResult b))
          -> MasterMessage a
-         -> StateMachine (ProcessId, ProcessId) () (WorkerMessage b) ()
+         -> StateMachine (ProcessId, ProcessId) () (WorkerMessage b) (WorkerMessage b) ()
 workerSM mapAction (DeliverTask task@(Task taskId _)) = do
   tell $ printf "running: %s" (show taskId)
   TaskResult _ result' <- liftIO $ mapAction task
@@ -116,12 +113,12 @@ masterP initState reduceAction = do
   self <- getSelfPid
   say $ printf "master alive on %s" (show self)
   register "taskQueue" self
-  stateMachineProcess Proxy () initState (masterSM reduceAction)
+  stateMachineProcess_ () initState Nothing (masterSM reduceAction)
 
 masterSM :: Monoid b
          => (TaskResult b -> IO ())
          -> WorkerMessage b
-         -> StateMachine () (MasterState a b) (MasterMessage a) ()
+         -> StateMachine () (MasterState a b) (MasterMessage a) (MasterMessage a) ()
 masterSM resultAction (AskForTask pid) = do
   q <- gets queue
   case dequeue q of
