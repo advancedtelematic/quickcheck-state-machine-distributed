@@ -71,13 +71,15 @@ waitForMaster masterNid = do
   say $ printf "waiting for master on %s" (show masterNid)
   whereisRemoteAsync masterNid "taskQueue"
   mpid <- receiveTimeout 1000
-    [ match (\(WhereIsReply _ (Just pid)) -> do
-                say $ printf "found master on %s" (show pid)
-                return pid)
-    , match (\(WhereIsReply _ Nothing)    -> do
-                say $ printf "didn't find master."
-                liftIO (threadDelay 1000000)
-                waitForMaster masterNid)
+    [ match (\(WhereIsReply _ mpid) -> do
+                case mpid of
+                  Just pid -> do
+                    say $ printf "found master on %s" (show pid)
+                    return pid
+                  Nothing -> do
+                    say $ printf "didn't find master."
+                    liftIO (threadDelay 1000000)
+                    waitForMaster masterNid)
     , matchAny (\msg                      -> do
                    say $ printf "unknown message: %s" (show msg)
                    waitForMaster masterNid)
@@ -106,7 +108,7 @@ data MasterState a b = MasterState
   , summary :: TaskSummary b
   }
 
-masterP :: (Binary a, Typeable a, Binary b, Typeable b, Monoid b)
+masterP :: (Binary a, Typeable a, Binary b, Typeable b)
         => MasterState a b
         -> (TaskResult  b -> TaskSummary b -> TaskSummary b)
         -> (TaskSummary b -> IO ())
