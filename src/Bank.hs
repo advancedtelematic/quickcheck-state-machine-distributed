@@ -166,18 +166,15 @@ shrinker model = shrinkParallelRequests shrinker1 precondition next' model
 ------------------------------------------------------------------------
 
 clientP :: Bool -> Process ()
-clientP testing = do
-  mscheduler <- Scheduler.getSchedulerPid testing
-  stateMachineProcess_ () () mscheduler clientSM
+clientP testing = stateMachineProcess_ () () testing clientSM
 
 clientSM :: BankResponse -> StateMachine () () BankRequest BankRequest ()
 clientSM _ = return ()
 
 bankP :: Bool -> Process ()
 bankP testing = do
-  mscheduler <- Scheduler.getSchedulerPid testing
   ref <- liftIO (newIORef M.empty)
-  stateMachineProcess_ () ref mscheduler bankSM
+  stateMachineProcess_ () ref testing bankSM
 
 type Implementation = IORef (Map ProcessId Money)
 
