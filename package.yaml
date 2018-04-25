@@ -4,7 +4,7 @@ github:              "advancedtelematic/distributed-tests-prototype"
 license:             BSD2
 author:              "Stevan Andjelkovic"
 maintainer:          "stevan.andjelkovic@here.com"
-copyright:           "Copyright (C) 2018, ATS Advanced Telematic Systems GmbH"
+copyright:           "Copyright (C) 2018, HERE Europe B.V."
 
 extra-source-files:
 - README.md
