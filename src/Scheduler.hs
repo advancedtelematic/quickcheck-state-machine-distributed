@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFoldable      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE ExplicitForAll      #-}
 {-# LANGUAGE RecordWildCards     #-}
@@ -26,7 +27,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Reader
                    (ask)
 import           Control.Monad.State
-                   (get, modify, gets, put)
+                   (get, gets, modify)
 import           Data.Binary
                    (Binary)
 import           Data.Map
@@ -80,7 +81,7 @@ data SchedulerEnv input output model = SchedulerEnv
 data Mailbox input output
   = Incoming (Seq input)  (Seq output)
   | Outgoing (Seq output) (Seq input)
-  deriving Show
+  deriving (Show, Foldable)
 
 data SchedulerState input output model = SchedulerState
   { mailboxes      :: Map (ProcessId, ProcessId) (Mailbox input output)
@@ -111,7 +112,7 @@ pickProcessPair = do
       processPairs -> do
         let (i, stdGen') = randomR (0, length processPairs - 1) stdGen
             processPair  = processPairs !! i
-        put SchedulerState { stdGen = stdGen', .. }
+        modify $ \s -> s { stdGen = stdGen' }
         return (Just processPair)
 
 type Scheduler input output model a =
@@ -186,7 +187,7 @@ schedulerSM (SchedulerResponse from resp to) = do
 
 schedulerP
   :: forall input output model
-  .  (Binary input, Typeable input)
+  .  (Binary input,  Typeable input)
   => (Binary output, Typeable output)
   => SchedulerEnv input output model
   -> SchedulerState input output model
@@ -198,7 +199,7 @@ schedulerP env st = do
   SchedulerSequential processPairs <- expect
   let st' = st { messageCount = count, sequential = processPairs }
   _ <- spawnLocal $ forever $ do
-    liftIO (threadDelay 200)
+    liftIO (threadDelay 1000)
     send self (SchedulerTick :: SchedulerMessage input output)
   hist <- catMaybes <$> stateMachineProcess env st' False schedulerSM
   send supervisor (SchedulerHistory hist)

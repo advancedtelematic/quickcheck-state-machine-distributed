@@ -27,9 +27,12 @@ dependencies:
 - mtl
 - network-transport
 - network-transport-tcp
+- pretty-show
 - random
 - QuickCheck
 - stm
+- strict
+- tasty-hunit
 
 ghc-options:
   - -Wall
@@ -54,7 +57,7 @@ executables:
 
 tests:
   distributed-tests-prototype-test:
-    main:                Spec.hs
+    main:                Driver.hs
     source-dirs:         test
     ghc-options:
     - -threaded
@@ -62,3 +65,8 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - distributed-tests-prototype
+    - tasty
+    - tasty-discover
+    - tasty-hunit
+    - tasty-quickcheck
+    - strict

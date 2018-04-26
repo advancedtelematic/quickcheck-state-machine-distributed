@@ -16,6 +16,7 @@ module StateMachine
   , (?)
   , SchedulerMessage(..) -- XXX
   , SchedulerPid(..) -- XXX
+  , getSchedulerPid
   )
   where
 
