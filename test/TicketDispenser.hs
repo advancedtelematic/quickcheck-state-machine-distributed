@@ -128,8 +128,8 @@ setup self seed = do
   mapM_ (`send` SchedulerPid schedulerPid) [client1Pid, client2Pid]
   return (client1Pid, client2Pid, schedulerPid)
 
-rop_ticketDispenser :: Property
-rop_ticketDispenser =
+prop_ticketDispenser :: Property
+prop_ticketDispenser =
   forAllShrink genRequests shrRequests $ \reqs -> monadicProcess $ do
     self <- lift getSelfPid
     (client1Pid, _, schedulerPid) <- lift (setup self 25)
