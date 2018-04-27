@@ -41,11 +41,6 @@ import           StateMachine
 
 ------------------------------------------------------------------------
 
-data SchedulerPid = SchedulerPid ProcessId
-  deriving Generic
-
-instance Binary SchedulerPid
-
 data SchedulerSupervisor = SchedulerSupervisor ProcessId
   deriving Generic
 
@@ -67,12 +62,6 @@ data SchedulerHistory pid inv resp = SchedulerHistory (History pid inv resp)
 instance (Binary pid, Binary inv, Binary resp) => Binary (SchedulerHistory pid inv resp)
 
 ------------------------------------------------------------------------
-
-getSchedulerPid :: Bool -> Process (Maybe ProcessId)
-getSchedulerPid False = return Nothing
-getSchedulerPid True  = do
-  SchedulerPid pid <- expect
-  return (Just pid)
 
 data SchedulerEnv input output model = SchedulerEnv
   { transition :: model -> Either input output -> model
@@ -203,5 +192,5 @@ schedulerP env st = do
   _ <- spawnLocal $ forever $ do
     liftIO (threadDelay 200)
     send self (SchedulerTick :: SchedulerMessage input output)
-  hist <- catMaybes <$> stateMachineProcess env st' Nothing schedulerSM
+  hist <- catMaybes <$> stateMachineProcess env st' False schedulerSM
   send supervisor (SchedulerHistory hist)

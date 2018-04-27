@@ -64,7 +64,7 @@ workerP nid workload = do
   say $ printf "slave alive on %s" (show self)
   master <- waitForMaster nid
   send master (AskForTask self :: WorkerMessage b)
-  stateMachineProcess_ (self, master) () Nothing (workerSM @a @b workload)
+  stateMachineProcess_ (self, master) () False (workerSM @a @b workload)
 
 waitForMaster :: NodeId -> Process ProcessId
 waitForMaster masterNid = do
@@ -117,7 +117,7 @@ masterP initState reduceAction finalAction = do
   self <- getSelfPid
   say $ printf "master alive on %s" (show self)
   register "taskQueue" self
-  stateMachineProcess_ () initState Nothing (masterSM reduceAction finalAction)
+  stateMachineProcess_ () initState False (masterSM reduceAction finalAction)
 
 masterSM :: (TaskResult  b -> TaskSummary b -> TaskSummary b)
          -> (TaskSummary b -> IO ())

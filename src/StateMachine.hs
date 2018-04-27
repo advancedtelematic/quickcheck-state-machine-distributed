@@ -15,12 +15,13 @@ module StateMachine
   , (!)
   , (?)
   , SchedulerMessage(..) -- XXX
+  , SchedulerPid(..) -- XXX
   )
   where
 
 import           Control.Distributed.Process
-                   (Process, ProcessId, getSelfPid, match, receiveWait,
-                   say, send)
+                   (Process, ProcessId, expect, getSelfPid, match,
+                   receiveWait, say, send)
 import           Control.Monad
                    (forM_, void)
 import           Control.Monad.Except
@@ -49,6 +50,17 @@ data SchedulerMessage input output
   deriving (Typeable, Generic, Show)
 
 instance (Binary input, Binary output) => Binary (SchedulerMessage input output)
+
+data SchedulerPid = SchedulerPid ProcessId
+  deriving Generic
+
+instance Binary SchedulerPid
+
+getSchedulerPid :: Bool -> Process (Maybe ProcessId)
+getSchedulerPid False = return Nothing
+getSchedulerPid True  = do
+  SchedulerPid pid <- expect
+  return (Just pid)
 
 ------------------------------------------------------------------------
 
@@ -85,10 +97,10 @@ stateMachineProcess_
   => (Binary output1, Typeable output1)
   => (Binary output2, Typeable output2)
   => config -> state
-  -> Maybe ProcessId
-  -> (input -> StateMachine config state output1 output2 result)
+  -> Bool
+  -> (input -> StateMachine config state output1 output2 ())
   -> Process ()
-stateMachineProcess_ cfg st mscheduler = void . stateMachineProcess cfg st mscheduler
+stateMachineProcess_ cfg st testing = void . stateMachineProcess cfg st testing
 
 stateMachineProcess
   :: forall input output1 output2 config state result
@@ -96,29 +108,33 @@ stateMachineProcess
   => (Binary output1, Typeable output1)
   => (Binary output2, Typeable output2)
   => config -> state
-  -> Maybe ProcessId
+  -> Bool
   -> (input -> StateMachine config state output1 output2 result)
   -> Process [result]
-stateMachineProcess cfg st mscheduler k = do
-  (continue, outputs) <- receiveWait [ match (liftIO . runStateMachine cfg st . k) ]
-  forM_ outputs $ \output -> case output of
-    Left str         -> say str
-    Right (pid, msg) -> case mscheduler of
-      Nothing        -> either (send pid) (send pid) msg
-      Just scheduler -> do
-        self <- getSelfPid
-        case msg of
-          Left req -> do
-            let sreq :: SchedulerMessage output1 output2
-                sreq = SchedulerRequest self req pid
-            send scheduler sreq
-          Right resp -> do
-            let sresp :: SchedulerMessage output1 output2
-                sresp = SchedulerResponse self resp pid
-            send scheduler sresp
-  case continue of
-    Left HaltStateMachine -> return []
-    Right (x, st')        -> (x :) <$> stateMachineProcess cfg st' mscheduler k
+stateMachineProcess cfg st0 testing k = do
+  mscheduler <- getSchedulerPid testing
+  go st0 mscheduler
+    where
+      go st mscheduler = do
+        (continue, outputs) <- receiveWait [ match (liftIO . runStateMachine cfg st . k) ]
+        forM_ outputs $ \output -> case output of
+          Left str         -> say str
+          Right (pid, msg) -> case mscheduler of
+            Nothing        -> either (send pid) (send pid) msg
+            Just scheduler -> do
+              self <- getSelfPid
+              case msg of
+                Left req -> do
+                  let sreq :: SchedulerMessage output1 output2
+                      sreq = SchedulerRequest self req pid
+                  send scheduler sreq
+                Right resp -> do
+                  let sresp :: SchedulerMessage output1 output2
+                      sresp = SchedulerResponse self resp pid
+                  send scheduler sresp
+        case continue of
+          Left HaltStateMachine -> return []
+          Right (x, st')        -> (x :) <$> go st' mscheduler
 
 ------------------------------------------------------------------------
 
