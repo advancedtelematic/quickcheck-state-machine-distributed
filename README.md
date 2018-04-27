@@ -1,1 +1,1 @@
-# distributed-tests-prototype
+# quickcheck-state-machine-distributed

@@ -1,6 +1,6 @@
-name:                distributed-tests-prototype
+name:                quickcheck-state-machine-distributed
 version:             0.1.0.0
-github:              "advancedtelematic/distributed-tests-prototype"
+github:              "advancedtelematic/quickcheck-state-machine-distributed"
 license:             BSD2
 author:              "Stevan Andjelkovic"
 maintainer:          "stevan.andjelkovic@here.com"
@@ -17,7 +17,7 @@ category:            Testing
 # To avoid duplicated efforts in documentation and dealing with the
 # complications of embedding Haddock markup inside cabal files, it is
 # common to point users to the README.md file.
-description:         Please see the README on Github at <https://github.com/advancedtelematic/distributed-tests-prototype#readme>
+description:         Please see the README on Github at <https://github.com/advancedtelematic/quickcheck-state-machine-distributed#readme>
 
 dependencies:
 - base >= 4.7 && < 5
@@ -45,7 +45,7 @@ library:
   source-dirs: src
 
 executables:
-  distributed-tests-prototype:
+  quickcheck-state-machine-distributed:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
@@ -53,10 +53,10 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - distributed-tests-prototype
+    - quickcheck-state-machine-distributed
 
 tests:
-  distributed-tests-prototype-test:
+  quickcheck-state-machine-distributed-test:
     main:                Driver.hs
     source-dirs:         test
     ghc-options:
@@ -64,7 +64,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - distributed-tests-prototype
+    - quickcheck-state-machine-distributed
     - tasty
     - tasty-discover
     - tasty-hunit
