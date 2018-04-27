@@ -4,116 +4,31 @@
 
 module Main where
 
-import           Control.Concurrent
-                   (threadDelay)
-import           Control.Distributed.Process
-                   (NodeId(NodeId))
-import           Control.Distributed.Process.Node
-                   (initRemoteTable, newLocalNode, runProcess)
-import           Data.Semigroup (Semigroup, (<>))
-import           Data.Binary
-                   (Binary)
-import           Data.Foldable
-                   (foldl')
-import           Data.Maybe
-                   (fromMaybe)
-import           Data.String
-                   (fromString)
-import           GHC.Generics
-                   (Generic)
-import           Network.Transport
-                   (EndPointAddress(..), Transport)
-import           Network.Transport.TCP
-                   (createTransport, defaultTCPParameters)
 import           System.Environment
-                   (getArgs, getProgName, lookupEnv)
+                   (getArgs, getProgName)
 import           System.Exit
                    (exitFailure, exitSuccess)
 import           System.Random
                    (randomIO)
-import           Test.Hspec.Core.Runner
-                   (Summary(..))
 import           Test.QuickCheck
                    (verboseCheckWith, stdArgs, maxSuccess)
 import           Text.Read
                    (readMaybe)
 
 import qualified Bank
-import           Lib
-import           TaskQueue
-import           Test
 
 ------------------------------------------------------------------------
-
-type TestTask = String
-
-data TestResult = TestResult Int Int
-  deriving (Generic, Show)
-
-instance Semigroup TestResult where
-  TestResult a b <> TestResult c d = TestResult (a+c) (b+d)
-
-instance Monoid TestResult where
-  mempty  = TestResult 0 0
-  mappend = (<>)
-
-instance Binary TestResult
 
 usage :: IO a
 usage = do
   prog <- getProgName
-  putStrLn $ "usage: " ++ prog ++ " (master host | slave host port | bank (integer | random))"
+  putStrLn $ "usage: " ++ prog ++ " bank (integer | random)"
   exitFailure
 
 main :: IO ()
 main = do
   args <- getArgs
-
-  masterHost <- fromMaybe "127.0.0.1" <$> lookupEnv "MASTER_SERVICE_HOST"
-  masterPort <- fromMaybe "8080"      <$> lookupEnv "MASTER_SERVICE_PORT"
-
-  let masterNodeId =
-        NodeId (EndPointAddress (fromString (masterHost ++ ":" ++ masterPort ++ ":0")))
-
   case args of
-    "master" : host : args' -> do
-      transport <- makeTransport host masterHost masterPort
-      nid <- newLocalNode transport initRemoteTable
-
-      let testTasks = zipWith Task (map TaskId [0..]) args'
-          n = length testTasks
-          q = foldl' enqueue mempty testTasks
-          initState = MasterState n q (mempty :: TaskSummary TestResult)
-
-          reduceAction :: TaskResult TestResult -> TaskSummary TestResult -> TaskSummary TestResult
-          reduceAction result summary' = TaskSummary (pure result) <> summary'
-
-          finalAction :: TaskSummary TestResult -> IO ()
-          finalAction (TaskSummary summary') = do
-            putStrLn $ "succeeded:"
-            putStrLn $ show [(taskId', result) | TaskSuccess taskId' result <- summary']
-
-            putStrLn $ "failed:"
-            putStrLn $ show [(taskId', result) | TaskFailure taskId' result <- summary']
-
-      runProcess nid (masterP initState reduceAction finalAction)
-
-      threadDelay (3 * 1000000)
-      exitSuccess
-    ["slave", host, port] -> do
-      transport <- makeTransport host host port
-      nid       <- newLocalNode transport initRemoteTable
-
-      let testAction :: Task TestTask -> IO (TaskResult TestResult)
-          testAction (Task taskId' test) = do
-            Summary exs fails <- runTests test
-            return $ (if fails == 0
-                      then TaskSuccess
-                      else TaskFailure)
-                     taskId' $ TestResult exs fails
-      runProcess nid $ workerP masterNodeId testAction
-      threadDelay (3 * 1000000)
-      exitSuccess
     ["bank", mseed] -> do
       seed <- case mseed of
         "random" -> randomIO
@@ -123,12 +38,3 @@ main = do
       verboseCheckWith stdArgs { maxSuccess = 200 } (Bank.prop_bank seed)
       exitSuccess
     _ -> usage
-  where
-  makeTransport :: String -> String -> String -> IO Transport
-  makeTransport host externalHost port = do
-    etransport <- createTransport host port (\port' -> (externalHost, port')) defaultTCPParameters
-    case etransport of
-      Left  err       -> do
-        putStrLn (show err)
-        exitFailure
-      Right transport -> return transport

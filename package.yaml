@@ -24,8 +24,6 @@ dependencies:
 - binary
 - containers
 - distributed-process
-- hspec
-- hspec-core
 - mtl
 - network-transport
 - network-transport-tcp
