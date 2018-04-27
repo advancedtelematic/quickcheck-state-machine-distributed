@@ -229,3 +229,6 @@ script:
       ;;
   esac
   set +ex
+
+notifications:
+  email: false
