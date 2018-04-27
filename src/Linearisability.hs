@@ -46,9 +46,6 @@ interleavings es =
 
 linearisable
   :: Eq pid
-  => Show model
-  => Show inv
-  => Show resp
   => (model -> Either inv resp -> model)
   -> (model -> inv -> resp -> Bool)
   -> model
@@ -69,7 +66,7 @@ linearisable transition postcondition model0 es =
 ------------------------------------------------------------------------
 
 prettyPrintHistory
-  :: (Show pid, Show inv, Show resp)
+  :: (Show inv, Show resp)
   => (pid -> String) -> History pid inv resp -> String
 prettyPrintHistory ppPid = foldr go ""
   where
@@ -77,9 +74,29 @@ prettyPrintHistory ppPid = foldr go ""
     go (pid, Right resp) ih = printf "< %s  [%s]\n%s" (show resp) (ppPid pid) ih
 
 prettyPrintHistoryProcessId :: (Show inv, Show resp) => History ProcessId inv resp -> String
-prettyPrintHistoryProcessId = prettyPrintHistory ppProcessId
+prettyPrintHistoryProcessId = prettyPrintHistory prettyPrintProcessId
+
+prettyPrintProcessId :: ProcessId -> String
+prettyPrintProcessId = reverse . takeWhile (/= ':') . reverse . show
+
+trace
+  :: (Show model, Show inv, Show resp)
+  => (model -> Either inv resp -> model) -> model -> History ProcessId inv resp -> String
+trace transitions = go
   where
-    ppProcessId = reverse . takeWhile (/= ':') . reverse . show
+    go _     []                         = ""
+    go model ((pid, Left  inv)  : hist) =
+      printf "%s\n  ==> %s  [%s]\n%s"
+        (show model)
+        (show inv)
+        (prettyPrintProcessId pid)
+        (go (transitions model (Left inv)) hist)
+    go model ((pid, Right resp) : hist) =
+      printf "%s\n  <== %s  [%s]\n%s"
+        (show model)
+        (show resp)
+        (prettyPrintProcessId pid)
+        (go (transitions model (Right resp)) hist)
 
 ------------------------------------------------------------------------
 

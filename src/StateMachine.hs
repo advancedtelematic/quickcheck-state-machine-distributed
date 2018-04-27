@@ -131,5 +131,5 @@ pid ! msg = Writer.tell [Right (pid, Right msg)]
 (?) :: MonadStateMachine config state output1 output2 m => ProcessId -> output1 -> m ()
 pid ? msg = Writer.tell [Right (pid, Left msg)]
 
-tell :: MonadStateMachine config state input output m => String -> m ()
+tell :: MonadStateMachine config state output1 output2 m => String -> m ()
 tell = Writer.tell . (:[]) . Left

@@ -17,7 +17,7 @@ import           Control.Monad.IO.Class
 import           Control.Monad.Reader
                    (ask)
 import           Control.Monad.State
-                   (get, modify, put)
+                   (get, modify, gets, put)
 import           Data.Binary
                    (Binary)
 import           Data.Map
@@ -27,7 +27,7 @@ import           Data.Maybe
                    (catMaybes)
 import           Data.Sequence
                    (Seq)
-import qualified Data.Sequence               as S
+import qualified Data.Sequence               as Seq
 import           Data.Typeable
                    (Typeable)
 import           GHC.Generics
@@ -56,6 +56,11 @@ data SchedulerCount = SchedulerCount Int
 
 instance Binary SchedulerCount
 
+data SchedulerSequential = SchedulerSequential [(ProcessId, ProcessId)]
+  deriving Generic
+
+instance Binary SchedulerSequential
+
 data SchedulerHistory pid inv resp = SchedulerHistory (History pid inv resp)
   deriving Generic
 
@@ -74,11 +79,17 @@ data SchedulerEnv input output model = SchedulerEnv
   , invariant  :: model -> Bool
   }
 
+data Mailbox input output
+  = Incoming (Seq input)  (Seq output)
+  | Outgoing (Seq output) (Seq input)
+  deriving Show
+
 data SchedulerState input output model = SchedulerState
-  { mailboxes      :: Map (ProcessId, ProcessId) (Seq (Either input output))
+  { mailboxes      :: Map (ProcessId, ProcessId) (Mailbox input output)
   , stdGen         :: StdGen
   , schedulerModel :: model
   , messageCount   :: Int
+  , sequential     :: [(ProcessId, ProcessId)]
   }
 
 makeSchedulerState :: Int -> model -> SchedulerState input output model
@@ -87,71 +98,99 @@ makeSchedulerState seed model = SchedulerState
   , stdGen         = mkStdGen seed
   , schedulerModel = model
   , messageCount   = 0
+  , sequential     = []
   }
 
 ------------------------------------------------------------------------
 
-type Scheduler input output model =
+pickProcessPair :: Scheduler input output model (Maybe (ProcessId, ProcessId))
+pickProcessPair = do
+  SchedulerState {..} <- get
+  case sequential of
+    processPair : _ -> do
+      return (Just processPair)
+    []              -> case M.keys mailboxes of
+      []           -> return Nothing
+      processPairs -> do
+        let (i, stdGen') = randomR (0, length processPairs - 1) stdGen
+            processPair  = processPairs !! i
+        put SchedulerState { stdGen = stdGen', .. }
+        return (Just processPair)
+
+type Scheduler input output model a =
   StateMachine
     (SchedulerEnv input output model)
     (SchedulerState input output model)
     input output
-    (Maybe (ProcessId, Either input output))
+    a
 
-schedulerSM :: (Show input, Show output, Show model)
-  => SchedulerMessage input output -> Scheduler input output model
+schedulerSM
+  :: SchedulerMessage input output
+  -> Scheduler input output model (Maybe (ProcessId, Either input output))
 schedulerSM SchedulerTick = do
-  SchedulerState{..} <- get
-  if messageCount == 0
+  count <- gets messageCount
+  if count == 0
   then halt
   else do
-    let processPairs = M.keys mailboxes
-    if null processPairs
-    then return Nothing
-    else do
-      let (i, stdGen') = randomR (0, length processPairs - 1) stdGen
-          processPair  = processPairs !! i
-      put SchedulerState { stdGen = stdGen', .. }
-      case S.viewl (mailboxes M.! processPair) of
-        S.EmptyL        -> return Nothing
-        msg S.:< queue' -> do
-          SchedulerEnv {..} <- ask
-          -- unless (invariant model) $ do
-          --   tell (printf "scheduler: invariant broken by `%s'" (show msg))
-          --   halt
-          put SchedulerState
-            { mailboxes      = M.insert processPair queue' mailboxes
-            , schedulerModel = transition schedulerModel msg
-            , messageCount   = messageCount - 1
-            , ..
-            }
-
-          let (from, to) = processPair
-          case msg of
-            Left  req  -> do
+    mprocessPair <- pickProcessPair
+    case mprocessPair of
+      Nothing          -> return Nothing
+      Just processPair -> do
+        mboxes <- gets mailboxes
+        case mboxes M.! processPair of
+          Incoming reqs resps -> case Seq.viewl reqs of
+            Seq.EmptyL        -> return Nothing
+            req Seq.:< reqs' -> do
+              SchedulerEnv {..} <- ask
+              -- unless (invariant model) $ do
+              --   tell (printf "scheduler: invariant broken by `%s'" (show msg))
+              --   halt
+              modify $ \s -> s
+                { mailboxes      = M.insert processPair (Outgoing resps reqs') (mailboxes s)
+                , schedulerModel = transition (schedulerModel s) (Left req)
+                , messageCount   = messageCount s - 1
+                , sequential     = drop 1 (sequential s)
+                }
+              let (from, to) = processPair
               to ? req
-              return (Just (from, msg))
-            Right resp -> do
+              return (Just (from, Left req))
+          Outgoing resps reqs -> case Seq.viewl resps of
+            Seq.EmptyL         -> return Nothing
+            resp Seq.:< resps' -> do
+              SchedulerEnv {..} <- ask
+              -- unless (invariant model) $ do
+              --   tell (printf "scheduler: invariant broken by `%s'" (show msg))
+              --   halt
+              modify $ \s -> s
+                { mailboxes      = M.insert processPair (Incoming reqs resps') (mailboxes s)
+                , schedulerModel = transition (schedulerModel s) (Right resp)
+                , messageCount   = messageCount s - 1
+                , sequential     = drop 1 (sequential s)
+                }
+              let (to, _from) = processPair
               to ! resp
-              return (Just (to, msg))
-schedulerSM (SchedulerRequest from request to) = do
+              return (Just (to, Right resp))
+schedulerSM (SchedulerRequest from req to) = do
   modify $ \s -> s { mailboxes = M.alter f (from, to) (mailboxes s) }
   return Nothing
     where
-      f Nothing      = Just (S.singleton (Left request))
-      f (Just queue) = Just (queue S.|> Left request)
-schedulerSM (SchedulerResponse from response to) = do
-  modify $ \s -> s { mailboxes = M.alter f (from, to) (mailboxes s) }
+      f Nothing     = Just (Incoming (Seq.singleton req) Seq.empty)
+      f (Just mbox) = case mbox of
+                        Incoming reqs resps -> Just (Incoming (reqs Seq.|> req) resps)
+                        Outgoing resps reqs -> Just (Outgoing resps (reqs Seq.|> req))
+schedulerSM (SchedulerResponse from resp to) = do
+  modify $ \s -> s { mailboxes = M.alter f (to, from) (mailboxes s) }
   return Nothing
     where
-      f Nothing      = Just (S.singleton (Right response))
-      f (Just queue) = Just (queue S.|> Right response)
+      f Nothing     = Just (Outgoing (Seq.singleton resp) Seq.empty)
+      f (Just mbox) = case mbox of
+                        Incoming reqs resps -> Just (Incoming reqs (resps Seq.|> resp))
+                        Outgoing resps reqs -> Just (Outgoing (resps Seq.|> resp) reqs)
 
 schedulerP
   :: forall input output model
-  .  Show model
-  => (Show input, Binary input, Typeable input)
-  => (Show output, Binary output, Typeable output)
+  .  (Binary input, Typeable input)
+  => (Binary output, Typeable output)
   => SchedulerEnv input output model
   -> SchedulerState input output model
   -> Process ()
@@ -159,8 +198,10 @@ schedulerP env st = do
   self <- getSelfPid
   SchedulerSupervisor supervisor <- expect
   SchedulerCount count <- expect
+  SchedulerSequential processPairs <- expect
+  let st' = st { messageCount = count, sequential = processPairs }
   _ <- spawnLocal $ forever $ do
-    liftIO (threadDelay 10000)
+    liftIO (threadDelay 200)
     send self (SchedulerTick :: SchedulerMessage input output)
-  hist <- catMaybes <$> stateMachineProcess env st { messageCount = count } Nothing schedulerSM
+  hist <- catMaybes <$> stateMachineProcess env st' Nothing schedulerSM
   send supervisor (SchedulerHistory hist)

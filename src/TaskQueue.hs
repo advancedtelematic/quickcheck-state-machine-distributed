@@ -5,8 +5,8 @@ module TaskQueue where
 
 import           Data.Binary
                    (Binary)
-import           Data.Monoid
-                   ((<>))
+import           Data.Semigroup
+                   (Semigroup, (<>))
 import           Data.Typeable
                    (Typeable)
 import           GHC.Generics
@@ -19,11 +19,13 @@ newtype Dequeue a = Dequeue [a]
 
 data Queue a = Queue (Enqueue a) (Dequeue a)
 
-instance Monoid (Queue a) where
-  mempty = mkQueue [] []
-  mappend (Queue (Enqueue es) (Dequeue ds))
-          (Queue (Enqueue fs) (Dequeue gs))
+instance Semigroup (Queue a) where
+  Queue (Enqueue es) (Dequeue ds) <> Queue (Enqueue fs) (Dequeue gs)
     = mkQueue (fs ++ reverse gs ++ es) (ds)
+
+instance Monoid (Queue a) where
+  mempty  = mkQueue [] []
+  mappend = (<>)
 
 mkQueue :: [a] -> [a] -> Queue a
 mkQueue es [] = Queue (Enqueue []) (Dequeue $ reverse es)
@@ -59,8 +61,11 @@ taskId (TaskFailure id' _) = id'
 data TaskSummary a = TaskSummary [TaskResult a]
   deriving (Generic, Typeable)
 
-instance Monoid (TaskSummary a) where
-  mempty = TaskSummary mempty
-  TaskSummary lhs `mappend` TaskSummary rhs = TaskSummary $ lhs <> rhs
+instance Semigroup a => Semigroup (TaskSummary a) where
+  TaskSummary lhs <> TaskSummary rhs = TaskSummary (lhs <> rhs)
+
+instance Semigroup a => Monoid (TaskSummary a) where
+  mempty  = TaskSummary mempty
+  mappend = (<>)
 
 instance Binary a => Binary (TaskResult a)

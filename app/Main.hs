@@ -10,14 +10,13 @@ import           Control.Distributed.Process
                    (NodeId(NodeId))
 import           Control.Distributed.Process.Node
                    (initRemoteTable, newLocalNode, runProcess)
+import           Data.Semigroup (Semigroup, (<>))
 import           Data.Binary
                    (Binary)
 import           Data.Foldable
                    (foldl')
 import           Data.Maybe
                    (fromMaybe)
-import           Data.Monoid
-                   ((<>))
 import           Data.String
                    (fromString)
 import           GHC.Generics
@@ -35,7 +34,7 @@ import           System.Random
 import           Test.Hspec.Core.Runner
                    (Summary(..))
 import           Test.QuickCheck
-                   (quickCheck)
+                   (verboseCheckWith, stdArgs, maxSuccess)
 import           Text.Read
                    (readMaybe)
 
@@ -51,9 +50,12 @@ type TestTask = String
 data TestResult = TestResult Int Int
   deriving (Generic, Show)
 
+instance Semigroup TestResult where
+  TestResult a b <> TestResult c d = TestResult (a+c) (b+d)
+
 instance Monoid TestResult where
-  mempty = TestResult 0 0
-  TestResult a b `mappend` TestResult c d = TestResult (a+c) (b+d)
+  mempty  = TestResult 0 0
+  mappend = (<>)
 
 instance Binary TestResult
 
@@ -118,8 +120,7 @@ main = do
         mint     -> case readMaybe mint of
           Nothing  -> usage
           Just int -> return int
-      quickCheck (Bank.prop_bank seed)
-      threadDelay (3 * 1000000)
+      verboseCheckWith stdArgs { maxSuccess = 200 } (Bank.prop_bank seed)
       exitSuccess
     _ -> usage
   where
