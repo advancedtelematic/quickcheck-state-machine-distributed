@@ -23,13 +23,13 @@ dependencies:
 - base >= 4.7 && < 5
 - binary
 - containers
-- distributed-process
+- distributed-process >= 0.7.3
 - mtl
-- network-transport
-- network-transport-tcp
+- network-transport >= 0.5.2
+- network-transport-tcp >= 0.6.0
 - pretty-show
 - random
-- QuickCheck
+- QuickCheck >= 2.11.3
 - stm
 - strict
 - tasty-hunit
