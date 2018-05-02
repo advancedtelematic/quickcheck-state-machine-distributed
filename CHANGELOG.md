@@ -1,3 +1,3 @@
-# Changelog for distributed-tests-prototype
+# Changelog for quickcheck-state-machine-distributed
 
 ## Unreleased changes
