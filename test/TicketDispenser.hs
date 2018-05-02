@@ -21,7 +21,8 @@ import           Prelude                     hiding
 import           System.IO.Strict
                    (readFile)
 import           Test.QuickCheck
-                   (Gen, Property, forAllShrink, frequency)
+                   (Gen, Property, expectFailure, forAllShrink,
+                   frequency)
 import           Test.QuickCheck.Monadic
                    (PropertyM)
 import           Text.Printf
@@ -154,7 +155,7 @@ prop_ticketDispenser =
              (trace next initModel hist))
 
 prop_ticketDispenserParallel :: Property
-prop_ticketDispenserParallel =
+prop_ticketDispenserParallel = expectFailure $
   forAllShrink genParallelRequests shrParallelRequests $ \(prefix, suffix) -> monadicProcess $ do
     self <- lift getSelfPid
     (client1Pid, client2Pid, schedulerPid) <- lift (setup self 15)
