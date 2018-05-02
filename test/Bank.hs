@@ -7,8 +7,6 @@
 
 module Bank where
 
-import           Control.Concurrent
-                   (threadDelay, forkIO)
 import           Control.Distributed.Process
                    (Process, ProcessId, expect, getSelfPid, liftIO,
                    send, spawnLocal)
@@ -211,9 +209,8 @@ accountBalance acc = do
 transferMoney :: (MonadIO m, MonadState Implementation m) => ProcessId -> Money -> ProcessId -> m ()
 transferMoney from money to = do
   ref <- get
-  void $ liftIO $ forkIO $ do
+  void $ liftIO $ do
     bank <- readIORef ref
-    threadDelay 20000
     writeIORef ref (M.insertWith (\new old -> new + old) to money $
                     M.insertWith (\new old -> old - new) from money bank)
 
