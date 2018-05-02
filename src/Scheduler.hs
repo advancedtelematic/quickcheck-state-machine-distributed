@@ -74,8 +74,8 @@ instance (Binary pid, Binary inv, Binary resp) => Binary (SchedulerHistory pid i
 ------------------------------------------------------------------------
 
 data SchedulerEnv input output model = SchedulerEnv
-  { transition :: model -> Either input output -> model
-  , invariant  :: model -> Bool
+  { transitions :: model -> Either input output -> model
+  , invariants  :: model -> Bool
   }
 
 data Mailbox input output
@@ -140,12 +140,12 @@ schedulerSM SchedulerTick = do
             Seq.EmptyL        -> return Nothing
             req Seq.:< reqs' -> do
               SchedulerEnv {..} <- ask
-              -- unless (invariant model) $ do
+              -- unless (invariants model) $ do
               --   tell (printf "scheduler: invariant broken by `%s'" (show msg))
               --   halt
               modify $ \s -> s
                 { mailboxes      = M.insert processPair (Outgoing resps reqs') (mailboxes s)
-                , schedulerModel = transition (schedulerModel s) (Left req)
+                , schedulerModel = transitions (schedulerModel s) (Left req)
                 , messageCount   = messageCount s - 1
                 , sequential     = drop 1 (sequential s)
                 }
@@ -156,12 +156,12 @@ schedulerSM SchedulerTick = do
             Seq.EmptyL         -> return Nothing
             resp Seq.:< resps' -> do
               SchedulerEnv {..} <- ask
-              -- unless (invariant model) $ do
+              -- unless (invariants model) $ do
               --   tell (printf "scheduler: invariant broken by `%s'" (show msg))
               --   halt
               modify $ \s -> s
                 { mailboxes      = M.insert processPair (Incoming reqs resps') (mailboxes s)
-                , schedulerModel = transition (schedulerModel s) (Right resp)
+                , schedulerModel = transitions (schedulerModel s) (Right resp)
                 , messageCount   = messageCount s - 1
                 , sequential     = drop 1 (sequential s)
                 }
