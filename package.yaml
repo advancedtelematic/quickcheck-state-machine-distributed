@@ -28,7 +28,7 @@ dependencies:
 - network-transport >= 0.5.2
 - network-transport-tcp >= 0.6.0
 - random
-- QuickCheck >= 2.11.3
+- QuickCheck >= 2.10
 - stm
 
 ghc-options:
