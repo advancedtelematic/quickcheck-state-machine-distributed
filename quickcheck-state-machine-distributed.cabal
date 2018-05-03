@@ -2,10 +2,10 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9448a188ec7af0bd0153459385fe65e1a6a7a4d51916c267e40c925f3bea07c3
+-- hash: 3757460f9c072a73f3ad960c2c738649d6f77eba17ae9c37400656995aaebbc9
 
 name:           quickcheck-state-machine-distributed
-version:        0.1.0.0
+version:        0.0.0
 synopsis:       Test monadic programs using state machine based models
 description:    Please see the README on Github at <https://github.com/advancedtelematic/quickcheck-state-machine-distributed#readme>
 category:       Testing

@@ -1,3 +1,5 @@
-# Changelog for quickcheck-state-machine-distributed
+## Changelog for quickcheck-state-machine-distributed
 
-## Unreleased changes
+#### 0.0.0
+
+* Initial release.
