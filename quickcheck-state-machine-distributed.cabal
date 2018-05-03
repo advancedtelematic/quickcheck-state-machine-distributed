@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3757460f9c072a73f3ad960c2c738649d6f77eba17ae9c37400656995aaebbc9
+-- hash: 70966f6d06951b6e91bc2c59cdede609a7b90bbf6f19d60bfaae7f7a0f6d7c52
 
 name:           quickcheck-state-machine-distributed
 version:        0.0.0
@@ -32,7 +32,7 @@ library
       src
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints
   build-depends:
-      QuickCheck >=2.11.3
+      QuickCheck >=2.10
     , base >=4.7 && <5
     , binary
     , containers
@@ -59,7 +59,7 @@ test-suite quickcheck-state-machine-distributed-test
       test
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      QuickCheck >=2.11.3
+      QuickCheck >=2.10
     , base >=4.7 && <5
     , binary
     , containers

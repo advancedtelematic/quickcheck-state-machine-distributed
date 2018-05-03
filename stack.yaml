@@ -5,7 +5,6 @@ extra-deps:
   - distributed-process-0.7.3
   - network-transport-0.5.2
   - network-transport-tcp-0.6.0
-  - QuickCheck-2.11.3
 nix:
   enable: false
   pure: false
