@@ -1,5 +1,5 @@
 name:                quickcheck-state-machine-distributed
-version:             0.0.0
+version:             0.0.1
 github:              "advancedtelematic/quickcheck-state-machine-distributed"
 license:             BSD2
 author:              "Stevan Andjelkovic"
