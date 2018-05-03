@@ -18,8 +18,12 @@ import           GHC.Generics
                    (Generic)
 import           Prelude                     hiding
                    (readFile)
+import           System.Directory
+                   (removePathForcibly)
 import           System.IO.Strict
                    (readFile)
+import           System.IO.Temp
+                   (emptySystemTempFile)
 import           Test.QuickCheck
                    (Gen, Property, expectFailure, forAllShrink,
                    frequency)
@@ -155,8 +159,8 @@ shrRequests = shrinkRequests shrink1 precondition transition initModel
 -- "Finding Race Conditions in Erlang with QuickCheck and PULSE" for
 -- more information about deterministic scheduling.
 
-clientP :: ProcessId -> Process ()
-clientP pid = stateMachineProcess_ pid () True clientSM
+clientP :: ProcessId -> FilePath -> Process ()
+clientP pid dbFile = stateMachineProcess_ (pid, dbFile) () True clientSM
 
 -- The True above indicates that we want to run in "testing mode". After
 -- we are done with testing we can deploy the distributed process using
@@ -164,42 +168,41 @@ clientP pid = stateMachineProcess_ pid () True clientSM
 
 -- The actual implementation uses a file to store the next ticket
 -- number. The reader part of the state machine monad contains the
--- process id to which we send the responses.
+-- process id to which we send the responses and a file path to the
+-- ticket database.
 
-clientSM :: Request -> StateMachine ProcessId () Request Response ()
+clientSM :: Request -> StateMachine (ProcessId, FilePath) () Request Response ()
 clientSM req = case req of
   Reset      -> do
-    liftIO reset
-    pid <- ask
+    (pid, db) <- ask
+    liftIO (reset db)
     pid ! Ok
   TakeTicket -> do
-    n <- liftIO takeTicket
-    pid <- ask
+    (pid, db) <- ask
+    n <- liftIO (takeTicket db)
     pid ! Number n
   where
-    reset :: IO ()
-    reset = writeFile ticketDispenserFile (show (0 :: Int))
+    reset :: FilePath -> IO ()
+    reset db = writeFile db (show (0 :: Int))
 
-    takeTicket :: IO Int
-    takeTicket = do
-      n <- read <$> readFile ticketDispenserFile
-      writeFile ticketDispenserFile (show (n + 1))
+    takeTicket :: FilePath -> IO Int
+    takeTicket db = do
+      n <- read <$> readFile db
+      writeFile db (show (n + 1))
       return (n + 1)
-
-    ticketDispenserFile :: FilePath
-    ticketDispenserFile = "/tmp/ticket-dispenser.txt"
 
 -- For testing, we will set up two clients (so we can test for race
 -- conditions) and a deterministic scheduler.
 
-setup :: ProcessId -> Int -> Process (ProcessId, ProcessId, ProcessId)
+setup :: ProcessId -> Int -> Process (ProcessId, ProcessId, ProcessId, FilePath)
 setup self seed = do
   schedulerPid <- spawnLocal (schedulerP (SchedulerEnv transition invariant)
                                 (makeSchedulerState seed initModel))
-  client1Pid <- spawnLocal (clientP self)
-  client2Pid <- spawnLocal (clientP self)
+  dbFile <- liftIO (emptySystemTempFile "ticket-dispenser")
+  client1Pid <- spawnLocal (clientP self dbFile)
+  client2Pid <- spawnLocal (clientP self dbFile)
   mapM_ (`send` SchedulerPid schedulerPid) [client1Pid, client2Pid]
-  return (client1Pid, client2Pid, schedulerPid)
+  return (client1Pid, client2Pid, schedulerPid, dbFile)
 
 -- Now we have everything we need to write QuickCheck properties.
 -- We start with a sequential property, which assures that using a
@@ -220,7 +223,7 @@ prop_ticketDispenser =
     -- used to communicate with the implementation of the ticket
     -- dispenser.
     self <- getSelfPid
-    (client1Pid, _, schedulerPid) <- setup self 25
+    (client1Pid, _, schedulerPid, dbFile) <- setup self 25
 
     -- Next we tell the scheduler where to send the result, how many
     -- messages it should expect, and which messages should be sent in a
@@ -239,6 +242,9 @@ prop_ticketDispenser =
     -- Once all requests have been processed the scheduler will send us
     -- a trace/history of the messages.
     SchedulerHistory hist <- expect
+
+    -- Clean up after ourselves.
+    liftIO (removePathForcibly dbFile)
 
     -- Finally we check if the model agrees with the responeses from the
     -- implementation. The way this is done is by starting from the
@@ -281,7 +287,7 @@ prop_ticketDispenserParallel = expectFailure $
     self <- getSelfPid
 
     -- First difference, is that we will use two clients this time.
-    (client1Pid, client2Pid, schedulerPid) <- setup self 15
+    (client1Pid, client2Pid, schedulerPid, dbFile) <- setup self 15
     send schedulerPid (SchedulerSupervisor self)
     let count = (length prefix + length suffix) * 2
     send schedulerPid (SchedulerCount count)
@@ -303,6 +309,8 @@ prop_ticketDispenserParallel = expectFailure $
                           :: SchedulerMessage Request Response)
 
     SchedulerHistory hist <- expect
+
+    liftIO (removePathForcibly dbFile)
 
     -- When we have a concurrent history, we try to find a possible
     -- sequential interleaving of requests and responses that respects

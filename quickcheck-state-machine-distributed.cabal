@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: fdc3119bc048ebda47168ef38289d1d66398138e2ec1b7d9324839e0d4a40ba3
+-- hash: 9448a188ec7af0bd0153459385fe65e1a6a7a4d51916c267e40c925f3bea07c3
 
 name:           quickcheck-state-machine-distributed
 version:        0.1.0.0
@@ -40,13 +40,9 @@ library
     , mtl
     , network-transport >=0.5.2
     , network-transport-tcp >=0.6.0
-    , pretty-show
     , random
     , stm
-    , strict
-    , tasty-hunit
   exposed-modules:
-      Bank
       Linearisability
       QuickCheckHelpers
       Scheduler
@@ -56,33 +52,9 @@ library
       Paths_quickcheck_state_machine_distributed
   default-language: Haskell2010
 
-executable quickcheck-state-machine-distributed
-  main-is: Main.hs
-  hs-source-dirs:
-      app
-  ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      QuickCheck >=2.11.3
-    , base >=4.7 && <5
-    , binary
-    , containers
-    , distributed-process >=0.7.3
-    , mtl
-    , network-transport >=0.5.2
-    , network-transport-tcp >=0.6.0
-    , pretty-show
-    , quickcheck-state-machine-distributed
-    , random
-    , stm
-    , strict
-    , tasty-hunit
-  other-modules:
-      Paths_quickcheck_state_machine_distributed
-  default-language: Haskell2010
-
 test-suite quickcheck-state-machine-distributed-test
   type: exitcode-stdio-1.0
-  main-is: Driver.hs
+  main-is: Main.hs
   hs-source-dirs:
       test
   ghc-options: -Wall -Wcompat -Wincomplete-record-updates -Wincomplete-uni-patterns -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
@@ -91,20 +63,20 @@ test-suite quickcheck-state-machine-distributed-test
     , base >=4.7 && <5
     , binary
     , containers
+    , directory
     , distributed-process >=0.7.3
     , mtl
     , network-transport >=0.5.2
     , network-transport-tcp >=0.6.0
-    , pretty-show
     , quickcheck-state-machine-distributed
     , random
     , stm
     , strict
     , tasty
-    , tasty-discover
-    , tasty-hunit
     , tasty-quickcheck
+    , temporary
   other-modules:
+      Bank
       TicketDispenser
       Paths_quickcheck_state_machine_distributed
   default-language: Haskell2010
